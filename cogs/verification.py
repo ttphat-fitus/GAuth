@@ -116,7 +116,6 @@ class IdentifierModal(discord.ui.Modal, title="Xác thực thành viên CLB USCC
             code=code,
             email=record.email,
             full_name=record.full_name,
-            dob=record.dob,
             mssv=record.mssv,
             ttl_seconds=self._otp_ttl_seconds,
         )
@@ -231,7 +230,7 @@ class OTPModal(discord.ui.Modal, title="Nhập OTP"):
 
         role = interaction.guild.get_role(self._verified_role_id)
         if role is None:
-            await interaction.followup.send("Bot cấu hình sai VERIFIED_ROLE_ID.", ephemeral=True)
+            await interaction.followup.send("Bot got mistake :(", ephemeral=True)
             return
 
         # Check if user already verified

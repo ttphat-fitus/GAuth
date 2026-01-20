@@ -12,7 +12,6 @@ class MemberRecord:
     full_name: str
     mssv: str
     email: str
-    dob: str
 
 
 class DBHandler:
@@ -33,8 +32,8 @@ class DBHandler:
             encoding="utf-8",
         )
 
-        # Ensure at least 5 columns exist (we need 0,1,3,4)
-        needed_cols = 5
+        # Ensure at least 3 columns exist (we need 0,1,2)
+        needed_cols = 3
         if df.shape[1] < needed_cols:
             for col in range(df.shape[1], needed_cols):
                 df[col] = ""
@@ -42,8 +41,7 @@ class DBHandler:
         # Normalize
         df[0] = df[0].astype(str).str.strip()
         df[1] = df[1].astype(str).str.strip()
-        df[3] = df[3].astype(str).str.strip().str.lower()
-        df[4] = df[4].astype(str).str.strip()
+        df[2] = df[2].astype(str).str.strip().str.lower()
 
         self._df = df
 
@@ -69,19 +67,17 @@ class DBHandler:
             return MemberRecord(
                 full_name=str(row[0]).strip(),
                 mssv=str(row[1]).strip(),
-                email=str(row[3]).strip().lower(),
-                dob=str(row[4]).strip(),
+                email=str(row[2]).strip().lower(),
             )
 
         # Email match (case-insensitive exact)
-        email_match = df[df[3] == identifier_lower]
+        email_match = df[df[2] == identifier_lower]
         if not email_match.empty:
             row = email_match.iloc[0]
             return MemberRecord(
                 full_name=str(row[0]).strip(),
                 mssv=str(row[1]).strip(),
-                email=str(row[3]).strip().lower(),
-                dob=str(row[4]).strip(),
+                email=str(row[2]).strip().lower(),
             )
 
         return None

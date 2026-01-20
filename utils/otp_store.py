@@ -10,7 +10,6 @@ class OTPEntry:
     code: str
     email: str
     full_name: str
-    dob: str
     mssv: str
     expires_at: datetime
 
@@ -26,7 +25,6 @@ class OTPStore:
         code: str,
         email: str,
         full_name: str,
-        dob: str,
         mssv: str,
         ttl_seconds: int,
     ) -> None:
@@ -35,7 +33,6 @@ class OTPStore:
             code=code,
             email=email,
             full_name=full_name,
-            dob=dob,
             mssv=mssv,
             expires_at=expires_at,
         )
