@@ -4,6 +4,7 @@ import asyncio
 import os
 import random
 from typing import Optional
+from datetime import datetime
 
 import discord
 from discord import app_commands
@@ -15,6 +16,7 @@ from utils.mailer import MailerError, send_otp_email
 from utils.name_utils import build_nickname
 from utils.otp_store import OTPStore
 from utils.verification_log import VerificationLog
+from utils.config_manager import ConfigManager
 
 
 def _env_int(name: str) -> Optional[int]:
@@ -297,22 +299,32 @@ class EnterOTPView(discord.ui.View):
 
     @discord.ui.button(label="Nhập OTP", style=discord.ButtonStyle.primary)
     async def enter_otp(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message("Lỗi: Không tìm thấy server.", ephemeral=True)
+            return
+
         cog = interaction.client.get_cog("VerificationCog")
         if cog is None:
             await interaction.response.send_message("Cog chưa sẵn sàng.", ephemeral=True)
             return
         assert isinstance(cog, VerificationCog)
 
-        # if cog.verified_role_id is None:
-        #     await interaction.response.send_message("Thiếu VERIFIED_ROLE_ID trong .env.", ephemeral=True)
-        #     return
+        guild_config = cog.config_manager.get_guild_config(interaction.guild.id)
+        if not guild_config:
+            await interaction.response.send_message("Server chưa được cấu hình. Vui lòng báo admin chạy lệnh /verify setup.", ephemeral=True)
+            return
+
+        verified_role_id = guild_config.get("verified_role_id")
+        if not verified_role_id:
+            await interaction.response.send_message("Chưa cấu hình Verified Role.", ephemeral=True)
+            return
 
         await interaction.response.send_modal(
             OTPModal(
                 otp_store=self._otp_store,
                 verification_log=self._verification_log,
                 attempt_tracker=self._attempt_tracker,
-                verified_role_id=cog.verified_role_id,
+                verified_role_id=verified_role_id,
                 max_attempts=self._max_attempts,
             )
         )
@@ -326,7 +338,7 @@ class VerificationView(discord.ui.View):
         otp_store: OTPStore,
         verification_log: VerificationLog,
         attempt_tracker: AttemptTracker,
-        verified_role_id: int,
+        config_manager: ConfigManager,
         smtp_host: str,
         smtp_port: int,
         smtp_user: str,
@@ -340,7 +352,7 @@ class VerificationView(discord.ui.View):
         self._otp_store = otp_store
         self._verification_log = verification_log
         self._attempt_tracker = attempt_tracker
-        self._verified_role_id = verified_role_id
+        self._config_manager = config_manager
         self._smtp_host = smtp_host
         self._smtp_port = smtp_port
         self._smtp_user = smtp_user
@@ -355,11 +367,21 @@ class VerificationView(discord.ui.View):
         custom_id="uscc_verify_start",
     )
     async def start(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        if interaction.guild is not None and interaction.user is not None:
-            member = interaction.guild.get_member(interaction.user.id)
-            if member is not None and self._verified_role_id in [r.id for r in member.roles]:
-                await interaction.response.send_message("Bạn đã được xác thực rồi.", ephemeral=True)
-                return
+        if interaction.guild is None or interaction.user is None:
+            return
+
+        guild_config = self._config_manager.get_guild_config(interaction.guild.id)
+        if not guild_config:
+            await interaction.response.send_message("Bot chưa được cấu hình cho server này. Vui lòng liên hệ admin.", ephemeral=True)
+            return
+
+        verified_role_id = guild_config.get("verified_role_id")
+        max_attempts = guild_config.get("max_attempts", self._max_attempts)
+
+        member = interaction.guild.get_member(interaction.user.id)
+        if member is not None and verified_role_id in [r.id for r in member.roles]:
+            await interaction.response.send_message("Bạn đã được xác thực rồi.", ephemeral=True)
+            return
 
         await interaction.response.send_modal(
             IdentifierModal(
@@ -373,7 +395,7 @@ class VerificationView(discord.ui.View):
                 smtp_pass=self._smtp_pass,
                 smtp_from_name=self._smtp_from_name,
                 otp_ttl_seconds=self._otp_ttl_seconds,
-                max_attempts=self._max_attempts,
+                max_attempts=max_attempts,
             )
         )
 
@@ -389,9 +411,7 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
         self.otp_store = OTPStore()
         self.verification_log = VerificationLog(log_dir=os.path.join(base_dir, "logs"))
         self.attempt_tracker = AttemptTracker()
-
-        self.verified_role_id: Optional[int] = None
-        self.verification_channel_id: Optional[int] = None
+        self.config_manager = ConfigManager(config_path=os.path.join(base_dir, "config.json"))
 
         self.smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -407,7 +427,7 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
             otp_store=self.otp_store,
             verification_log=self.verification_log,
             attempt_tracker=self.attempt_tracker,
-            verified_role_id=0,
+            config_manager=self.config_manager,
             smtp_host=self.smtp_host,
             smtp_port=self.smtp_port,
             smtp_user=self.smtp_user,
@@ -419,10 +439,15 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        if self.verification_channel_id is None:
+        guild_config = self.config_manager.get_guild_config(member.guild.id)
+        if not guild_config:
+            return
+            
+        verification_channel_id = guild_config.get("verify_channel_id")
+        if verification_channel_id is None:
             return
 
-        channel = member.guild.get_channel(self.verification_channel_id)
+        channel = member.guild.get_channel(verification_channel_id)
         if not isinstance(channel, discord.TextChannel):
             return
 
@@ -455,9 +480,14 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
             await interaction.response.send_message("Only usable within a server.", ephemeral=True)
             return
 
-        self.verified_role_id = verified_role.id
-        self.verification_channel_id = verify_channel.id
-        self.max_attempts = max(1, min(attempts, 10))
+        max_attempts = max(1, min(attempts, 10))
+        
+        self.config_manager.set_guild_config(
+            guild_id=interaction.guild.id,
+            channel_id=verify_channel.id,
+            role_id=verified_role.id,
+            max_attempts=max_attempts
+        )
 
         await verify_channel.send(
             "Press the button below to start verification.",
@@ -466,14 +496,14 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
                 otp_store=self.otp_store,
                 verification_log=self.verification_log,
                 attempt_tracker=self.attempt_tracker,
-                verified_role_id=self.verified_role_id,
+                config_manager=self.config_manager,
                 smtp_host=self.smtp_host,
                 smtp_port=self.smtp_port,
                 smtp_user=self.smtp_user,
                 smtp_pass=self.smtp_pass,
                 smtp_from_name=self.smtp_from_name,
                 otp_ttl_seconds=self.otp_ttl_seconds,
-                max_attempts=self.max_attempts,
+                max_attempts=max_attempts,
             ),
         )
 
@@ -481,38 +511,55 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
             f"Verification setup successful:\n"
             f"- Channel: {verify_channel.mention}\n"
             f"- Role: {verified_role.mention}\n"
-            f"- Max attempts: {self.max_attempts}",
+            f"- Max attempts: {max_attempts}",
             ephemeral=True,
         )
 
-    @app_commands.command(name="log", description="View verification statistics")
+    @app_commands.command(name="log", description="View detailed verification statistics")
     @app_commands.checks.has_permissions(administrator=True)
     async def view_logs(self, interaction: discord.Interaction) -> None:
-        success = self.verification_log.count_success()
-        failed = self.verification_log.count_failed()
+        success_count = self.verification_log.count_success()
+        failed_count = self.verification_log.count_failed()
 
         embed = discord.Embed(
             title="USCC Verification Statistics",
             color=discord.Color.blue(),
+            timestamp=datetime.now()
         )
-        embed.add_field(name="Verified", value=str(success), inline=True)
-        embed.add_field(name="Failed", value=str(failed), inline=True)
+        embed.add_field(name="✅ Verified", value=str(success_count), inline=True)
+        embed.add_field(name="❌ Failed", value=str(failed_count), inline=True)
 
         failed_entries = self.verification_log.get_failed_entries(limit=10)
         if failed_entries:
-            failed_list = "\n".join(
-                [
-                    f"{e.get('discord_username', '?')} ({e.get('mssv', '?')}) - {e.get('reason', '?')}"
-                    for e in failed_entries
-                ]
-            )
+            failed_text = ""
+            for e in failed_entries:
+                user = e.get("discord_username", "Unknown")
+                identifier = e.get("mssv") or e.get("email") or "Unknown"
+                reason = e.get("reason", "Unknown reason")
+                failed_text += f"• **{user}** (`{identifier}`): {reason}\n"
+            
             embed.add_field(
-                name="Recent Failed Attempts (Last 10)",
-                value=f"```{failed_list}```",
+                name="Recent Failed Attempts",
+                value=failed_text or "No recent failures",
                 inline=False,
             )
+            
+        success_entries = self.verification_log.get_success_entries(limit=5)
+        if success_entries:
+            success_text = ""
+            for e in success_entries:
+                user = e.get("discord_username", "Unknown")
+                name = e.get("full_name", "Unknown")
+                mssv = e.get("mssv", "")
+                success_text += f"• **{user}** - {name} ({mssv})\n"
+                
+            embed.add_field(
+                name="Recent Verified Members",
+                value=success_text or "No recent verifications",
+                inline=False
+            )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 async def setup(bot: commands.Bot) -> None:

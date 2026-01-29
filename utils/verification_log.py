@@ -79,3 +79,16 @@ class VerificationLog:
                 except json.JSONDecodeError:
                     pass
         return entries
+
+    def get_success_entries(self, limit: int = 20) -> list[dict]:
+        if not self.success_file.exists():
+            return []
+        entries = []
+        with open(self.success_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in lines[-limit:]:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries
