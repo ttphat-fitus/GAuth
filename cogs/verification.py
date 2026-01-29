@@ -417,7 +417,7 @@ class VerificationCog(commands.Cog, name="VerificationCog"):
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
         self.smtp_user = os.getenv("SMTP_USER", "")
         self.smtp_pass = os.getenv("SMTP_PASS", "")
-        self.smtp_from_name = os.getenv("SMTP_FROM_NAME", "USCC Auth")
+        self.smtp_from_name = os.getenv("SMTP_FROM_NAME", "HCMUS CHESS CLUB")
         self.otp_ttl_seconds = int(os.getenv("OTP_EXPIRE_SECONDS", "300"))
         self.max_attempts = int(os.getenv("MAX_OTP_ATTEMPTS", "5"))
 
