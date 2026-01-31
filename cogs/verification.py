@@ -27,16 +27,6 @@ def _env_int(name: str) -> Optional[int]:
     if not value:
         return None
     return int(value)
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    raw = raw.strip().lower()
-    return raw in {"1", "true", "yes", "y", "on"}
-
-
 class AttemptTracker:
     def __init__(self) -> None:
         self._attempts: dict[int, int] = {}
@@ -119,6 +109,7 @@ class IdentifierModal(discord.ui.Modal, title="Xác thực thành viên CLB USCC
             email=record.email,
             full_name=record.full_name,
             mssv=record.mssv,
+            role=record.role,
             ttl_seconds=self._otp_ttl_seconds,
         )
 
@@ -243,6 +234,17 @@ class OTPModal(discord.ui.Modal, title="Nhập OTP"):
         try:
             if role not in member.roles:
                 await member.add_roles(role, reason="USCC verification")
+            
+            # Auto-assign additional role from database
+            if entry.role and entry.role.lower() != "member":
+                extra_role = discord.utils.get(interaction.guild.roles, name=entry.role)
+                if extra_role:
+                    if extra_role not in member.roles:
+                        await member.add_roles(extra_role, reason=f"USCC verification - {entry.role}")
+                else:
+                    # Optional: Log warning that role wasn't found
+                    print(f"[GAuth] Role '{entry.role}' not found in guild.")
+
         except discord.Forbidden:
             await interaction.followup.send("Bot không đủ quyền để cấp role.", ephemeral=True)
             return

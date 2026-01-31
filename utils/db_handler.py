@@ -12,6 +12,7 @@ class MemberRecord:
     full_name: str
     mssv: str
     email: str
+    role: str = ""
 
 
 class DBHandler:
@@ -32,8 +33,8 @@ class DBHandler:
             encoding="utf-8",
         )
 
-        # Ensure at least 3 columns exist (we need 0,1,2)
-        needed_cols = 3
+        # Ensure at least 4 columns exist
+        needed_cols = 4
         if df.shape[1] < needed_cols:
             for col in range(df.shape[1], needed_cols):
                 df[col] = ""
@@ -42,6 +43,7 @@ class DBHandler:
         df[0] = df[0].astype(str).str.strip()
         df[1] = df[1].astype(str).str.strip()
         df[2] = df[2].astype(str).str.strip().str.lower()
+        df[3] = df[3].astype(str).str.strip()
 
         self._df = df
 
@@ -68,6 +70,7 @@ class DBHandler:
                 full_name=str(row[0]).strip(),
                 mssv=str(row[1]).strip(),
                 email=str(row[2]).strip().lower(),
+                role=str(row[3]).strip(),
             )
 
         # Email match (case-insensitive exact)
@@ -78,6 +81,7 @@ class DBHandler:
                 full_name=str(row[0]).strip(),
                 mssv=str(row[1]).strip(),
                 email=str(row[2]).strip().lower(),
+                role=str(row[3]).strip(),
             )
 
         return None

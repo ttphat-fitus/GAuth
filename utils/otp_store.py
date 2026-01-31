@@ -12,6 +12,7 @@ class OTPEntry:
     full_name: str
     mssv: str
     expires_at: datetime
+    role: str = ""
 
 
 class OTPStore:
@@ -26,6 +27,7 @@ class OTPStore:
         email: str,
         full_name: str,
         mssv: str,
+        role: str,
         ttl_seconds: int,
     ) -> None:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
@@ -35,6 +37,7 @@ class OTPStore:
             full_name=full_name,
             mssv=mssv,
             expires_at=expires_at,
+            role=role,
         )
 
     def get(self, user_id: int) -> Optional[OTPEntry]:
