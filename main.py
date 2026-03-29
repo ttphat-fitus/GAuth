@@ -38,6 +38,7 @@ async def main() -> None:
             print(f"[GAuth] Command sync failed: {exc}")
 
     await bot.load_extension("cogs.verification")
+    await bot.load_extension("cogs.admin")
 
     try:
         await bot.start(token)
